@@ -1,0 +1,108 @@
+name: Build iOS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - Cargo.lock
+      - rust-toolchain.toml
+      - prpr/src/core/shaders/**
+      - assets/**
+      - xcode/**
+      - phira.xcodeproj/**
+      - scripts/prepare-ios-assets.py
+      - .github/workflows/ios.yml
+  pull_request:
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - Cargo.lock
+      - rust-toolchain.toml
+      - prpr/src/core/shaders/**
+      - assets/**
+      - xcode/**
+      - phira.xcodeproj/**
+      - scripts/prepare-ios-assets.py
+      - .github/workflows/ios.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    runs-on: macos-14
+    timeout-minutes: 60
+    env:
+      CARGO_TERM_COLOR: always
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target/xcode
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install
+          rustup target add aarch64-apple-ios
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target/xcode'
+          key: ios-device
+
+      - name: Test blockArea parsing, geometry and input latching
+        run: cargo test --locked -p prpr --no-default-features --test block_area
+
+      - name: Prepare runtime assets
+        run: python3 scripts/prepare-ios-assets.py
+
+      - name: Build unsigned device application
+        run: |
+          set -euo pipefail
+          xcodebuild build \
+            -project phira.xcodeproj \
+            -target phira \
+            -configuration Release \
+            -sdk iphoneos \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
+            DEVELOPMENT_TEAM= \
+            CONFIGURATION_BUILD_DIR="$RUNNER_TEMP/ios-products" \
+            2>&1 | tee "$RUNNER_TEMP/ios-build.log"
+
+      - name: Validate and package IPA
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/ios-products/Phira.app"
+          test -x "$APP/phira-main"
+          test -s "$APP/assets/font.ttf"
+          test -s "$APP/assets/background.jpg"
+          plutil -lint "$APP/Info.plist"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$APP/Info.plist")" = phira-main
+          lipo -verify_arch arm64 "$APP/phira-main"
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          ditto "$APP" "$RUNNER_TEMP/ipa/Payload/Phira.app"
+          cd "$RUNNER_TEMP/ipa"
+          ditto -c -k --keepParent Payload "$RUNNER_TEMP/Phira-blockArea-unsigned.ipa"
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Phira-iOS-unsigned-${{ github.run_number }}
+          path: ${{ runner.temp }}/Phira-blockArea-unsigned.ipa
+          if-no-files-found: error
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-build-log-${{ github.run_number }}
+          path: ${{ runner.temp }}/ios-build.log
+          if-no-files-found: ignore
