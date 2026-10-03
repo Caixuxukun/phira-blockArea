@@ -42,6 +42,8 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       CARGO_TARGET_DIR: ${{ github.workspace }}/target/xcode
+      CARGO_PROFILE_RELEASE_DEBUG: '2'
+      CARGO_PROFILE_RELEASE_STRIP: 'none'
     steps:
       - uses: actions/checkout@v4
 
@@ -73,6 +75,26 @@ jobs:
             DEVELOPMENT_TEAM= \
             CONFIGURATION_BUILD_DIR="$RUNNER_TEMP/ios-products" \
             2>&1 | tee "$RUNNER_TEMP/ios-build.log"
+
+      - name: Preserve crash symbols
+        run: |
+          set -euo pipefail
+          BINARY="$CARGO_TARGET_DIR/aarch64-apple-ios/release/phira-main"
+          SYMBOLS="$RUNNER_TEMP/ios-symbols"
+          mkdir -p "$SYMBOLS"
+          cp "$BINARY" "$SYMBOLS/phira-main"
+          dsymutil "$BINARY" -o "$SYMBOLS/phira-main.dSYM"
+          dwarfdump --uuid "$SYMBOLS/phira-main" "$SYMBOLS/phira-main.dSYM" \
+            "$RUNNER_TEMP/ios-products/Phira.app/phira-main" | tee "$SYMBOLS/uuids.txt"
+          printf '%s\n' "$GITHUB_SHA" > "$SYMBOLS/commit.txt"
+          ditto -c -k --keepParent "$SYMBOLS" "$RUNNER_TEMP/Phira-iOS-symbols.zip"
+
+      - name: Upload crash symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: Phira-iOS-symbols-${{ github.run_number }}
+          path: ${{ runner.temp }}/Phira-iOS-symbols.zip
+          if-no-files-found: error
 
       - name: Validate and package IPA
         run: |

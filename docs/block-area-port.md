@@ -100,4 +100,10 @@ GPU 示例使用生产渲染模块，分别输出隐藏、停用、预备、激�
 
 成功后在 Actions 的 Artifacts 下载 `Phira-iOS-unsigned-<run_number>`，内含 `Phira-blockArea-unsigned.ipa`。
 这是**未签名 IPA**，安装前需要自行签名；workflow 不需要 Apple 证书或 secrets。
+后续构建保留 Rust release 调试信息，并上传 `Phira-iOS-symbols-<run_number>`（原始可执行文件、dSYM、UUID 和源码提交号）。分析 `.ips` 时必须使用同一次构建且 UUID 匹配的符号；重新构建的符号不能用于旧安装包。该改动用于定位真机崩溃，不代表已修复启动问题。
+
+2026-10-03 的启动崩溃报告与用户提供 IPA 的 UUID 均为 `0e80915f-e4f7-3921-a8f2-a609d7105ae3`，包内运行资源完整。二进制反汇编确认报告中的 `+17410872` 返回地址位于 miniquad `draw_in_rect` 的 unwind 终止分支，调用 Rust 的 `panic_cannot_unwind`；这不是最初的 panic 位置。该包没有保留函数符号，报告也没有原始 panic 消息，尚不能由此确定根因。
+
+iOS 入口现在在 Rust future 内捕获 panic，在失败时停止业务执行并显示错误页，同时通过 panic hook 将原始消息、源码位置、启动阶段和回溯追加到应用 `Documents/phira-crash.txt`。可在“文件”App 的 Phira 文件夹或文件共享中导出。后台线程的 panic 也会记录；原生异常、abort、图形框架在该 future 外的错误以及 panic 期间再次 panic 不能保证被捕获。仍需新包真机复现，以日志定位并修复原始错误。
+
 用户提供的 2026-10-03 Actions 日志已确认 Xcode `BUILD SUCCEEDED`，随后打包前的 `lipo` 检查因参数顺序错误退出；现已修正为输入文件在前、`-verify_arch arm64` 在后。修正后的 IPA 打包及上传仍需重新运行 Actions 验证。

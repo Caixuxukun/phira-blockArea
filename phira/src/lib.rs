@@ -10,6 +10,7 @@ mod charts_view;
 mod client;
 mod data;
 pub mod deeplink;
+mod diagnostics;
 mod icons;
 mod images;
 mod login;
@@ -169,6 +170,7 @@ mod dir {
 }
 
 async fn the_main() -> Result<()> {
+    diagnostics::stage("logging");
     log::register();
     #[cfg(target_env = "ohos")]
     {
@@ -177,8 +179,10 @@ async fn the_main() -> Result<()> {
         prpr::core::DPI_VALUE.store(250, std::sync::atomic::Ordering::Relaxed);
     };
 
+    diagnostics::stage("asset directory");
     init_assets();
 
+    diagnostics::stage("async runtime");
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(4)
         .enable_all()
@@ -196,6 +200,7 @@ async fn the_main() -> Result<()> {
         *CACHE_DIR.lock().unwrap() = Some("Caches".to_owned());
     }
 
+    diagnostics::stage("user data");
     let dir = dir::root()?;
     let mut data: Data = std::fs::read_to_string(format!("{dir}/data.json"))
         .map_err(anyhow::Error::new)
@@ -221,13 +226,17 @@ async fn the_main() -> Result<()> {
         .display_mut()
         .set_pause_resume_listener(on_pause_resume);
 
+    diagnostics::stage("Phigros font");
     let pgr_font = FontArc::try_from_vec(load_file("phigros.ttf").await?)?;
     PGR_FONT.with(move |it| *it.borrow_mut() = Some(TextPainter::new(pgr_font, None)));
 
+    diagnostics::stage("main font");
     let font = FontArc::try_from_vec(load_file("font.ttf").await?)?;
     let mut painter = TextPainter::new(font.clone(), None);
 
+    diagnostics::stage("main scene initialization");
     let mut main = Main::new(Box::new(MainScene::new(font).await?), TimeManager::default(), None).await?;
+    diagnostics::stage("main loop");
 
     let tm = TimeManager::default();
     let mut fps_time = -1;
@@ -322,7 +331,9 @@ fn build_global_window_conf() -> Conf {
 #[no_mangle]
 pub extern "C" fn quad_main() {
     macroquad::Window::from_config(build_global_window_conf(), async {
-        if let Err(err) = the_main().await {
+        if cfg!(target_os = "ios") {
+            diagnostics::run(the_main()).await;
+        } else if let Err(err) = the_main().await {
             error!(?err, "global error");
         }
     });
