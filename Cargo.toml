@@ -58,7 +58,7 @@ rand = "0.8.5"
 regex = "1.12.3"
 reqwest = { version = "0.13.2", default-features = false }
 rfd = "0.17.2"
-sasa = { git = "https://github.com/Mivik/sasa", rev = "e76229b", default-features = false }
+sasa = { path = "vendor/sasa", default-features = false }
 serde = "1.0.228"
 serde_json = "1.0.149"
 serde_yaml = "0.9.34"

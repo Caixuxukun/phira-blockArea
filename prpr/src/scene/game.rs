@@ -1028,6 +1028,15 @@ impl Scene for GameScene {
         if let Some(update) = &mut self.update_fn {
             update(self.res.time, &mut self.res, &mut self.judge);
         }
+        // A blocked finger remains latched until release, even after leaving
+        // the field. Use the same live touch set as judgement and rendering.
+        self.music.set_block_low_pass(
+            matches!(self.state, State::Playing)
+                && !tm.paused()
+                && self.pause_rewind.is_none()
+                && self.mode != GameMode::View
+                && !self.res.blocked_touch_positions.is_empty(),
+        );
         let counts = self.judge.counts();
         self.res.judge_line_color = if counts[2] + counts[3] == 0 && self.res.config.ap_fc_indicator {
             if counts[1] == 0 {

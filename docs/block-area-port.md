@@ -71,7 +71,19 @@ Unity 摄像机/CommandBuffer 合成被改为 Phira FBO 通道；判定几何和
 - 边缘/辉光使用合并的八圈扩张 pass，触摸轮廓使用圆形掩码；没有逐帧复刻 Unity prefab 的触摸出现/消失协程。
 - 渐显使用谱面时钟而非 Unity 协程时钟，变速/跳转时保证确定性。
 - 按 APK `BlockRender.Start` 恢复遮罩为谱面视口的 1/8、EffectRT 为 1/4；遮罩用最近邻，辉光用线性采样，边缘按 EffectRT 像素中心采样。最终场景保持原分辨率。
-- APK 的触摸音频低通滤波尚未移植；本次判定干扰是输入屏蔽。
+- 触摸音频低通已接入谱面音乐，参数与触发规则见下节；Unity 内部 DSP 以双声道 biquad 适配，尚未做原版录音对照。
+
+## 噪域音频低通
+
+4.0.1 的 `level12` / `LevelControl`（path ID 195）序列化数据在 `0x1F8`、`0x1FC` 分别保存截止频率 **1500 Hz**、过渡时长 **0.1 秒**。`LevelControl.<Start>d__46.MoveNext` 在 `0x1D796CC` 读取截止频率并设置到音乐 AudioSource 上动态添加的 AudioLowPassFilter，随后禁用组件；`0x1D796F4` 将渐变时长交给 ProgressControl。
+
+`JudgeControl.ProcessBlockedTouches` 根据本帧仍按住的被屏蔽手指决定低通开关。手指滑出噪域后仍保持屏蔽及低通，最后一根被屏蔽手指松开/取消才恢复。`ProgressControl.<LerpLowPassFilter>d__54.MoveNext` 从当前截止频率线性渐变到 1500 Hz，释放时渐变到 22000 Hz 后关闭滤波；中途反转从当前频率重新过渡。首次启用时组件原本已是 1500 Hz，因此没有从 22000 Hz 开始的首次扫频。
+
+本地 `vendor/sasa` 基于原锁定版本 `e76229b2f68e4dc68b22bc375d2a92e8e7897691`，新增音乐专用二阶低通，Q=1（[Unity AudioLowPassFilter 默认参数](https://docs.unity3d.com/es/2018.3/Manual/class-AudioLowPassFilter.html)）。左右声道独立，按音频线程实际输出采样率计算系数，截止频率在低采样率设备上限制到 Nyquist 以下；过渡使用音频输出时间，不随谱面倍速变化。未启用及释放过渡结束后直接输出原始音乐样本，打击音效不经过这个滤波器。
+
+控制端通过原子布尔值传递触摸状态，不向有界播放命令队列逐帧塞入控制命令；暂停和 seek 清空滤波状态，重建音乐默认旁路。自动演奏、预览、倒计时和暂停回退不触发低通。没有新增系统框架或原生依赖，iOS workflow 使用同一份本地音频库，无需额外安装步骤。
+
+这是已核实触发规则及参数的移植，biquad 并非 Unity 内部 DSP 的逐指令复刻，音色仍需真机与原版对照。`cargo test --locked -p sasa --no-default-features` 的 5 项测试覆盖多采样率高频衰减、低频保留、声道隔离、默认/释放旁路、播放位置不变、暂停/seek 复位、渐变反转及采样率切换稳定性。
 
 ## 复现分析
 
