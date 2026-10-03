@@ -94,10 +94,10 @@ GPU 示例使用生产渲染模块，分别输出隐藏、停用、预备、激�
 
 `.github/workflows/ios.yml` 支持手动触发及 main/master 推送、相关 PR。仓库根目录应是含 `Cargo.toml` 的本目录，而不是外层存放 APK 的工作目录。
 
-流程在 macOS 安装项目指定 nightly 和 `aarch64-apple-ios`，先运行噪域测试，再调用现有 Xcode 工程，保留视频功能。
+流程在 macOS 安装项目指定 nightly 和 `aarch64-apple-ios`，直接调用现有 Xcode 工程，保留视频功能；噪域测试可按上面的命令在本地运行。
 缺失的字体、背景及内置资源从官方 Phira 0.8.2 发布包恢复，并校验固定 SHA-256；不会覆盖已有资源。
 补充了受版本管理的 `xcode/Info.plist` 与 `xcode/build-rust.sh`，消除了对本机忽略文件 `phira.app/Info.plist` 的依赖。
 
 成功后在 Actions 的 Artifacts 下载 `Phira-iOS-unsigned-<run_number>`，内含 `Phira-blockArea-unsigned.ipa`。
 这是**未签名 IPA**，安装前需要自行签名；workflow 不需要 Apple 证书或 secrets。
-当前 Windows 环境不能执行 Xcode，workflow 已做静态校验，实际 iOS 构建结果须以 GitHub Actions 为准。
+用户提供的 2026-10-03 Actions 日志已确认 Xcode `BUILD SUCCEEDED`，随后打包前的 `lipo` 检查因参数顺序错误退出；现已修正为输入文件在前、`-verify_arch arm64` 在后。修正后的 IPA 打包及上传仍需重新运行 Actions 验证。

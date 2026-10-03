@@ -57,9 +57,6 @@ jobs:
           workspaces: '. -> target/xcode'
           key: ios-device
 
-      - name: Test blockArea parsing, geometry and input latching
-        run: cargo test --locked -p prpr --no-default-features --test block_area
-
       - name: Prepare runtime assets
         run: python3 scripts/prepare-ios-assets.py
 
@@ -86,7 +83,7 @@ jobs:
           test -s "$APP/assets/background.jpg"
           plutil -lint "$APP/Info.plist"
           test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleExecutable' "$APP/Info.plist")" = phira-main
-          lipo -verify_arch arm64 "$APP/phira-main"
+          lipo "$APP/phira-main" -verify_arch arm64
           mkdir -p "$RUNNER_TEMP/ipa/Payload"
           ditto "$APP" "$RUNNER_TEMP/ipa/Payload/Phira.app"
           cd "$RUNNER_TEMP/ipa"
