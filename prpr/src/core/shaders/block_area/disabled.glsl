@@ -6,7 +6,7 @@ precision highp int;
 varying highp vec2 uv;
 uniform vec2 sceneScale;
 uniform vec2 sceneOffset;
-uniform vec4 _Time;
+uniform vec4 blockTime;
 const vec4 _FillColor = vec4(0.4970000088214874, 0.13766898214817047, 0.13766898214817047, 1.0);
 const float _FillOpacity = 0.4000000059604645;
 const vec3 _SparkTint = vec3(0.31132078170776367, 0.07783019542694092, 0.07783019542694092);
@@ -34,7 +34,7 @@ void main()
     u_xlat16_1.x = u_xlat16_0 + -9.99999975e-05;
     u_xlatb4 = u_xlat16_1.x<0.0;
     if(u_xlatb4){discard;}
-    u_xlat4.x = _Time.x * _DisplaceSpeed;
+    u_xlat4.x = blockTime.x * _DisplaceSpeed;
     u_xlat16_1.x = dot(_DisplaceDirection.xy, _DisplaceDirection.xy);
     u_xlat16_1.x = inversesqrt(u_xlat16_1.x);
     u_xlat16_1.xy = u_xlat16_1.xx * _DisplaceDirection.xy;

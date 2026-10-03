@@ -6,7 +6,7 @@ precision highp int;
 varying highp vec2 uv;
 uniform vec2 sceneScale;
 uniform vec2 sceneOffset;
-uniform vec4 _Time;
+uniform vec4 blockTime;
 uniform vec4 _ScreenParams;
 uniform vec4 _EffectRT_TexelSize;
 const vec4 _EdgeColor = vec4(1.0, 0.3301885724067688, 0.3301885724067688, 1.0);
@@ -167,7 +167,7 @@ void main()
         u_xlat16_3.x = dot(_DisplaceDirection.xy, _DisplaceDirection.xy);
         u_xlat16_3.x = inversesqrt(u_xlat16_3.x);
         u_xlat16_3.xy = u_xlat16_3.xx * _DisplaceDirection.xy;
-        u_xlat16.x = _Time.x * _DisplaceSpeed;
+        u_xlat16.x = blockTime.x * _DisplaceSpeed;
         u_xlat33.y = u_xlat16.x * u_xlat16_3.x;
         u_xlat1.xy = u_xlat16_3.xy * u_xlat16.xx + ((uv * vec2(0.800000011920929, 0.30000001192092896) + vec2(0.0, 0.0))).xy;
         u_xlat32.x = max(_BackgroundPixelScale, 1.0);
@@ -309,7 +309,7 @@ void main()
     }
     u_xlatb0.x = 9.99999975e-05<u_xlat16_18;
     u_xlat1.xyz = vec3(vec3(_ShineBrightness, _ShineBrightness, _ShineBrightness)) * _ShineColor.xyz;
-    u_xlat16.x = _Time.y * _ShineSpeed;
+    u_xlat16.x = blockTime.y * _ShineSpeed;
     u_xlat16.x = sin(u_xlat16.x);
     u_xlat16.x = u_xlat16.x * 0.5 + 1.0;
     u_xlat1.xyz = u_xlat16.xxx * u_xlat1.xyz;
@@ -321,7 +321,7 @@ void main()
         u_xlat0.x = dot(_TouchDisplaceDirection.xy, _TouchDisplaceDirection.xy);
         u_xlat0.x = inversesqrt(u_xlat0.x);
         u_xlat0.xy = u_xlat0.xx * _TouchDisplaceDirection.xy;
-        u_xlat1.x = _Time.x * _TouchDisplaceSpeed;
+        u_xlat1.x = blockTime.x * _TouchDisplaceSpeed;
         u_xlat17.xy = u_xlat0.xy * u_xlat1.xx + ((uv * vec2(0.550000011920929, 0.30000001192092896) + vec2(0.0, 0.0))).xy;
         u_xlat49 = max(_TouchBackgroundPixelScale, 1.0);
         u_xlat17.xy = u_xlat17.xy * _ScreenParams.xy;
@@ -345,7 +345,7 @@ void main()
         u_xlat0.xy = u_xlat0.xy * vec2(vec2(_TouchDisplaceStrength, _TouchDisplaceStrength)) + (uv).xy;
         u_xlat16_0 = texture2D(_TouchHoverRT, u_xlat0.xy).x;
         u_xlat16.xy = (vec4(uv, 0.0, 1.0)).xy / (vec4(uv, 0.0, 1.0)).ww;
-        u_xlat48 = _Time.y * _NoiseDirChangeSpeed;
+        u_xlat48 = blockTime.y * _NoiseDirChangeSpeed;
         u_xlat1.x = floor(u_xlat48);
         u_xlat48 = fract(u_xlat48);
         u_xlat17.x = u_xlat48 * u_xlat48;
@@ -411,7 +411,7 @@ void main()
         u_xlat16.xy = u_xlat16.xy / u_xlat33.xx;
         u_xlat1.xy = floor(u_xlat16.xy);
         u_xlat16.xy = fract(u_xlat16.xy);
-        u_xlat33.x = _Time.y * _SDFMoveSpeed;
+        u_xlat33.x = blockTime.y * _SDFMoveSpeed;
         u_xlat49 = floor(u_xlat33.x);
         u_xlat33.x = fract(u_xlat33.x);
         u_xlat6.x = u_xlat33.x * u_xlat33.x;

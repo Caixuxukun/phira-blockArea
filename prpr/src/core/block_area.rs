@@ -167,11 +167,12 @@ impl BlockArea {
             || ![self.appear_time, self.enable_time, self.disable_time, self.disappear_time]
                 .into_iter()
                 .all(f64::is_finite)
-            || self.appear_time > self.disappear_time
-            || self.enable_time > self.disable_time
         {
             return Err("invalid blockArea geometry or lifetime");
         }
+        // Official charts include empty/reversed intervals (e.g. Hate IN #148).
+        // Preserve them: phase() naturally yields no visible/active interval.
+        // Reject non-finite data, but do not reorder times or reject the chart.
         if self
             .move_events
             .iter()

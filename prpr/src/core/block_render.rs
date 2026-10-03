@@ -18,6 +18,7 @@ pub struct BlockRenderer {
     edge: Material,
     active: Material,
     disabled: Material,
+    copy: Material,
     targets: Vec<RenderTarget>,
     textures: [Texture2D; 3],
     size: (u32, u32),
@@ -80,6 +81,7 @@ impl BlockRenderer {
                 (include_str!("shaders/block_area/edge_glow.glsl"), None),
                 (ACTIVE, Some(BlendState::new(Equation::Add, One, OneMinusValue(SourceAlpha)))),
                 (DISABLED, Some(BlendState::new(Equation::Add, One, One))),
+                (include_str!("shaders/block_area/copy.glsl"), None),
             ] {
                 materials.push(material(fragment, blend)?);
             }
@@ -109,6 +111,7 @@ impl BlockRenderer {
             edge: materials[3],
             active: materials[4],
             disabled: materials[5],
+            copy: materials[6],
             targets: Vec::new(),
             textures,
             size: (0, 0),
@@ -138,16 +141,26 @@ impl BlockRenderer {
         let viewport = gl.quad_gl.get_viewport();
         let output = target.output();
         let vp = viewport.unwrap_or((0, 0, output.texture.width() as i32, output.texture.height() as i32));
-        let scale = (1280. / vp.2.max(vp.3).max(1) as f32).min(1.);
-        let size = ((vp.2 as f32 * scale).max(1.) as u32, (vp.3 as f32 * scale).max(1.) as u32);
+        // BlockRender.Start in 4.0.1 allocates masks at screen / 8. The coarse
+        // lattice is part of the effect, not merely a performance optimization.
+        let size = ((vp.2 / 8).max(1) as u32, (vp.3 / 8).max(1) as u32);
         // All masks use chart-local UVs, including when the game is letterboxed.
         if self.size != size {
             for target in self.targets.drain(..) {
                 target.delete();
             }
-            self.targets = (0..11).map(|_| render_target(size.0, size.1)).collect();
-            for target in &self.targets {
-                target.texture.set_filter(FilterMode::Linear);
+            self.targets = (0..11)
+                .map(|index| {
+                    let scale = if index == 9 { 2 } else { 1 };
+                    render_target(size.0 * scale, size.1 * scale)
+                })
+                .collect();
+            for (index, target) in self.targets.iter().enumerate() {
+                // EffectRT.G is a smooth glow; the active shader explicitly
+                // snaps its R (edge) samples to texel centers.
+                target
+                    .texture
+                    .set_filter(if index == 9 { FilterMode::Linear } else { FilterMode::Nearest });
             }
             self.size = size;
         }
@@ -200,7 +213,8 @@ impl BlockRenderer {
         }
         self.target(9);
         self.edge.set_texture("mask", self.targets[6].texture);
-        self.edge.set_uniform("texel", vec2(1. / size.0 as f32, 1. / size.1 as f32));
+        let effect_size = vec2(self.targets[9].texture.width(), self.targets[9].texture.height());
+        self.edge.set_uniform("texel", vec2(1. / effect_size.x, 1. / effect_size.y));
         Self::fullscreen(self.edge);
         self.target(10);
         gl_use_material(self.union);
@@ -224,12 +238,18 @@ impl BlockRenderer {
         target.swap();
         let source = target.old();
         let destination = target.output();
-        super::copy_fbo(super::internal_id(source), super::internal_id(destination), (source.texture.width() as u32, source.texture.height() as u32));
         gl.quad_gl.render_pass(Some(destination.render_pass));
+        gl.quad_gl.viewport(None);
+        // A raw glBlitFramebuffer inherits the last mask pass's small scissor,
+        // leaving most of the destination stale. A regular draw restores the
+        // renderer's framebuffer/scissor state and copies the entire scene.
+        self.copy.set_texture("sourceScene", source.texture);
+        Self::fullscreen(self.copy);
+        gl.flush();
         gl.quad_gl.viewport(viewport);
         let time = time as f32;
         for material in [self.active, self.disabled] {
-            material.set_uniform("_Time", [time / 20., time, time * 2., time * 3.]);
+            material.set_uniform("blockTime", [time / 20., time, time * 2., time * 3.]);
             material.set_texture("_DisplaceMap", self.textures[0]);
             material.set_texture("_SparkMap", self.textures[1]);
         }
@@ -246,7 +266,7 @@ impl BlockRenderer {
         let (w, h) = (vp.2 as f32, vp.3 as f32);
         self.active.set_uniform("_ScreenParams", [w, h, 1. + 1. / w, 1. + 1. / h]);
         self.active
-            .set_uniform("_EffectRT_TexelSize", [1. / size.0 as f32, 1. / size.1 as f32, size.0 as f32, size.1 as f32]);
+            .set_uniform("_EffectRT_TexelSize", [1. / effect_size.x, 1. / effect_size.y, effect_size.x, effect_size.y]);
         self.active
             .set_uniform("sceneScale", vec2(w / source.texture.width(), h / source.texture.height()));
         self.active
@@ -272,6 +292,7 @@ impl Drop for BlockRenderer {
             &mut self.edge,
             &mut self.active,
             &mut self.disabled,
+            &mut self.copy,
         ] {
             material.delete();
         }

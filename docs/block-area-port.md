@@ -39,6 +39,7 @@ Unity assets/bin/Data/data.unity3d -> sharedassets12.assets
 ## 数据和判定
 
 - 四个状态时间以及动画时间都直接使用秒，不进行判定线 BPM 换算。
+- 接受有限数值的空/反向时间区间，按原来的时间比较自然隐藏或不激活，不修正时间。原版「ハテ IN」索引 148 的 `appearTime=28.3`、`disappearTime=28.29932` 属于这种情况；不再因此拒绝整张谱面。
 - 事件首帧之前使用默认几何；区间使用**起始关键帧**的缓动和锚点。这一点以 APK 为准，与[格式文档](https://teamflos.github.io/phira-docs/chart-standard/chart-format/phi/blockArea.html)的部分叙述不同。
 - 缓动 1–12 是二到五次幂，而非名称所暗示的正弦；按原版的 101 点查表再线性插值。
 - 保留越界坐标、反向对角坐标、独立 X/Y 缓动、累计锚点变化，以及暂停/回退后重新求值。
@@ -49,6 +50,14 @@ Unity assets/bin/Data/data.unity3d -> sharedassets12.assets
 - 自动演奏保持原有行为。键盘没有屏幕触点坐标，仍按 Phira 原有键盘规则处理。
 - 重试、练习模式重置会清除屏蔽 ID；不会修改旧谱面的 `blockAreaList` 缺省行为。
 - 旧 PBC 格式无法保存噪域；含噪域的谱面转换时会明确报错，请保留 Phigros JSON，避免静默丢失判定数据。
+
+## 普通模式判定时间
+
+从 4.0.1 ARM64 `JudgeControl::.cctor`（`0x1D74010`）核对的普通模式基础阈值为 Perfect 80 ms、Good 180 ms、Bad 220 ms。`ClickControl::Judge`（`0x1D82114`）与 `HoldControl::Judge`（`0x1D83B50`）使用音符与当前时间的绝对差比较 Perfect；未触发音符迟到超过 Good 时判 Miss。
+
+Phira 原有触摸路径先从迟到误差中减去 `EARLY_OFFSET=70 ms`，使 Tap/Hold 头的有效 Perfect 范围达到提前 80 ms、迟到约 150 ms（1 倍速）；键盘路径原本没有该补偿。现已移除这段非对称补偿，Good 从 160 ms 调整为 180 ms，迟到超过 Good 不再进入 Bad。提前 Tap 的 Bad 上限仍为 220 ms。保留用户输入延迟校准和变速下的真实时间换算。
+
+这次对齐普通模式时间窗口，不代表挑战模式、Flick 手势阈值、空间判定、Hold 续押或成绩认证与官方完全等价。新加入的时间回归覆盖迟到 81–150 ms 不再判为 Perfect、Good 180 ms 边界及变速换算；真实导出的全部 30 张新增/修改谱已通过解析，包括「ハテ IN」的 781 条噪域。
 
 ## 渲染适配范围
 
@@ -61,7 +70,7 @@ Unity 摄像机/CommandBuffer 合成被改为 Phira FBO 通道；判定几何和
 - 遮罩使用普通区域并集与减算 XOR；没有逐指令复刻 Unity 的归一化格式累加/阈值预处理，特别是未激活区域的重叠渐显。
 - 边缘/辉光使用合并的八圈扩张 pass，触摸轮廓使用圆形掩码；没有逐帧复刻 Unity prefab 的触摸出现/消失协程。
 - 渐显使用谱面时钟而非 Unity 协程时钟，变速/跳转时保证确定性。
-- 中间缓冲长边限制为 1280，减小移动设备显存占用；最终场景保持原分辨率。
+- 按 APK `BlockRender.Start` 恢复遮罩为谱面视口的 1/8、EffectRT 为 1/4；遮罩用最近邻，辉光用线性采样，边缘按 EffectRT 像素中心采样。最终场景保持原分辨率。
 - APK 的触摸音频低通滤波尚未移植；本次判定干扰是输入屏蔽。
 
 ## 复现分析
@@ -87,7 +96,8 @@ cargo run --locked -p prpr --no-default-features --example block_area_gpu -- /tm
 ```
 
 GPU 示例使用生产渲染模块，分别输出隐藏、停用、预备、激活、触摸、镜像和留边图，并检查 OpenGL 错误。
-已在 Windows 实际 OpenGL 4.6 驱动运行，15 项 CPU 测试通过，核心模块 Clippy 无警告；主程序无默认特性的编译检查通过。
+针对真机反馈的渲染问题，Unity `_Time` 改名为私有 `blockTime`，避免 Macroquad 每次绘制覆盖为 `(t, sin(t), cos(t), 0)`；场景复制改用独立全屏 pass，避免低分辨率遮罩 pass 留下的 OpenGL scissor 裁掉 `glBlitFramebuffer`。GPU 示例在 1600×900 校验跨时刻动画变化、回到同一谱面时间时像素一致，以及噪域外/留边区域像素不变。
+已在 Windows 实际 OpenGL 4.6 驱动运行；本次 22 项 CPU 回归测试通过，全部 30 张新增/修改实谱解析通过，核心模块 Clippy 无警告；主程序无默认特性的编译检查此前已通过。
 尚未进行 iOS 真机、不同厂商移动 GPU 或与 Phigros 逐帧画面对照。
 
 ## iOS workflow

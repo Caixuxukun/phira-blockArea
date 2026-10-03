@@ -19,12 +19,17 @@ use tracing::debug;
 
 pub const FLICK_SPEED_THRESHOLD: f32 = 0.8;
 pub const LIMIT_PERFECT: f64 = 0.08;
-pub const LIMIT_GOOD: f64 = 0.16;
+// Phigros 4.0.1 JudgeControl::.cctor, ordinary (non-challenge) windows.
+pub const LIMIT_GOOD: f64 = 0.18;
 pub const LIMIT_BAD: f64 = 0.22;
 pub const UP_TOLERANCE: f64 = 0.05;
 pub const DIST_FACTOR: f64 = 0.2;
 
-const EARLY_OFFSET: f64 = 0.07;
+/// Real-time distance from an input to a note. No asymmetric late-input grace:
+/// APK ClickControl::Judge / HoldControl::Judge compare abs(note - now).
+pub fn timing_error(note_time: f64, input_time: f64, speed: f64) -> f64 {
+    (note_time - input_time).abs() / speed
+}
 
 #[derive(Debug, Clone)]
 pub enum HitSound {
@@ -645,7 +650,10 @@ impl Judge {
                     if dt >= closest.3 {
                         break;
                     }
-                    let dt = if dt < 0. { (dt + EARLY_OFFSET).min(0.).abs() } else { dt };
+                    if dt < -LIMIT_GOOD {
+                        continue;
+                    }
+                    let dt = timing_error(note.time, t, spd);
                     let x = &mut note.object.translation.0;
                     x.set_time(t);
                     let dist = (x.now() - pos.x).abs() as f64 / note.judge_area as f64;
@@ -734,7 +742,11 @@ impl Judge {
                 .min_by_key(|(line_id, id)| chart.lines[*line_id].notes[*id as usize].time.not_nan())
             {
                 let note = &mut chart.lines[line_id].notes[id as usize];
-                let dt = (t - note.time).abs() / spd;
+                // Bad is an early-tap window; a late input past Good is Miss.
+                if (t - note.time) / spd > LIMIT_GOOD {
+                    continue;
+                }
+                let dt = timing_error(note.time, t, spd);
                 if dt <= if matches!(note.kind, NoteKind::Click) { LIMIT_BAD } else { LIMIT_GOOD } {
                     match note.kind {
                         NoteKind::Click => {
@@ -799,7 +811,7 @@ impl Judge {
                 }
                 // process miss
                 let dt = (t - note.time) / spd;
-                if dt > LIMIT_BAD {
+                if dt > LIMIT_GOOD {
                     note.judge = JudgeStatus::Judged;
                     judgements.push((Judgement::Miss, line_id, *id, None));
                     continue;

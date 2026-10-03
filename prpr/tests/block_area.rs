@@ -192,13 +192,42 @@ fn parser_keeps_legacy_charts_and_reports_bad_block_index() {
     let mut source = source;
     source["blockAreaList"] = json!([{
         "topRightPercentage":{"x":1,"y":1},"bottomLeftPercentage":{"x":0,"y":0},
-        "appearTime":0,"enableTime":10,"disableTime":5,"disappearTime":20
+        "appearTime":0,"enableTime":10,"disableTime":15,"disappearTime":20,
+        "rotateEvents":[{"time":0,"rotation":0,"anchor":{"x":0.5,"y":0.5},"easeType":15}]
     }]);
     let error = parse_phigros(&source.to_string(), ChartExtra::default()).err().unwrap();
     assert!(error.to_string().contains("blockAreaList[0]"));
-    source["blockAreaList"][0]["disableTime"] = json!(15);
+    source["blockAreaList"][0]["rotateEvents"] = json!([]);
     let chart = parse_phigros(&source.to_string(), ChartExtra::default()).unwrap();
     assert_eq!(chart.block_areas[0].phase(10.), BlockPhase::Active);
+}
+
+#[test]
+fn official_hate_in_empty_lifetime_loads_without_creating_a_block() {
+    let source = json!({"formatVersion":3,"offset":0,"judgeLineList":[],"blockAreaList":[{
+        "topRightPercentage":{"x":0.2402335,"y":0.89},
+        "bottomLeftPercentage":{"x":0.0022451729,"y":0.0},
+        "appearTime":28.3,"enableTime":28.3,"disableTime":29.3,"disappearTime":28.29932
+    }]});
+    let chart = parse_phigros(&source.to_string(), ChartExtra::default()).unwrap();
+    let a = &chart.block_areas[0];
+    assert_eq!(a.disappear_time, 28.29932);
+    for t in [28., 28.29932, 28.2999, 28.3, 28.5, 29.3] {
+        assert_eq!(a.phase(t), BlockPhase::Hidden);
+        assert!(!blocks_touch(&chart.block_areas, t, 16. / 9., BlockPoint { x: -0.8, y: 0. }));
+    }
+}
+
+#[test]
+fn reversed_activation_interval_never_interferes_with_judgement() {
+    let mut a = area();
+    a.enable_time = 3.;
+    a.disable_time = 2.;
+    a.validate().unwrap();
+    for t in [1.5, 2., 2.5, 3., 3.5, 4.] {
+        assert_ne!(a.phase(t), BlockPhase::Active);
+        assert!(!blocks_touch(std::slice::from_ref(&a), t, 1., BlockPoint::default()));
+    }
 }
 
 #[test]
