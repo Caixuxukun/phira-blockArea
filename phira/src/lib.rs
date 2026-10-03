@@ -246,15 +246,20 @@ async fn the_main() -> Result<()> {
     let mut last_frame_start = f32::NAN;
     let mut fps_time_sum = 0.;
 
-    'app: loop {
-        if main.paused() {
-            match rx.recv() {
-                Ok(false) => {
-                    main.resume()?;
-                }
-                Ok(true) => {}
-                Err(_) => break 'app,
+    loop {
+        // iOS delivers activation callbacks on this same thread. Never block it
+        // waiting for a resume message, and consume queued transitions before updating.
+        while let Ok(paused) = rx.try_recv() {
+            if paused {
+                main.pause()?;
+            } else {
+                main.resume()?;
             }
+        }
+        if main.paused() {
+            last_frame_start = f32::NAN;
+            next_frame().await;
+            continue;
         }
 
         let frame_start = tm.real_time();
@@ -270,13 +275,6 @@ async fn the_main() -> Result<()> {
         let res = || -> Result<()> {
             main.update()?;
             main.render(&mut painter)?;
-            if let Ok(paused) = rx.try_recv() {
-                if paused {
-                    main.pause()?;
-                } else {
-                    main.resume()?;
-                }
-            }
             prpr::ext::flush_pending_texture_deletions();
             Ok(())
         }();
@@ -285,7 +283,7 @@ async fn the_main() -> Result<()> {
             show_error(err);
         }
         if main.should_exit() {
-            break 'app;
+            break;
         }
 
         let t = tm.real_time();
@@ -300,8 +298,6 @@ async fn the_main() -> Result<()> {
             }
         }
 
-        // While backgrounded the scene is paused; the blocking `recv_timeout`
-        // above already parks this thread, so nothing extra is needed here.
         next_frame().await;
     }
     Ok(())

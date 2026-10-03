@@ -559,11 +559,17 @@ impl Main {
     }
 
     pub fn pause(&mut self) -> Result<()> {
+        if self.paused {
+            return Ok(());
+        }
         self.paused = true;
         self.scenes.last_mut().unwrap().pause(&mut self.tm)
     }
 
     pub fn resume(&mut self) -> Result<()> {
+        if !self.paused {
+            return Ok(());
+        }
         self.paused = false;
         self.scenes.last_mut().unwrap().resume(&mut self.tm)
     }

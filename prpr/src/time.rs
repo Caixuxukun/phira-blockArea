@@ -99,12 +99,16 @@ impl TimeManager {
     }
 
     pub fn pause(&mut self) {
-        self.pause_time = Some(self.real_time());
+        if self.pause_time.is_none() {
+            self.pause_time = Some(self.real_time());
+        }
     }
 
     pub fn resume(&mut self) {
-        self.start_time += self.real_time() - self.pause_time.take().unwrap();
-        self.wait();
+        if let Some(paused_at) = self.pause_time.take() {
+            self.start_time += self.real_time() - paused_at;
+            self.wait();
+        }
     }
 
     pub fn seek_to(&mut self, pos: f64) {

@@ -104,6 +104,8 @@ GPU 示例使用生产渲染模块，分别输出隐藏、停用、预备、激�
 
 2026-10-03 的启动崩溃报告与用户提供 IPA 的 UUID 均为 `0e80915f-e4f7-3921-a8f2-a609d7105ae3`，包内运行资源完整。二进制反汇编确认报告中的 `+17410872` 返回地址位于 miniquad `draw_in_rect` 的 unwind 终止分支，调用 Rust 的 `panic_cannot_unwind`；这不是最初的 panic 位置。该包没有保留函数符号，报告也没有原始 panic 消息，尚不能由此确定根因。
 
-iOS 入口现在在 Rust future 内捕获 panic，在失败时停止业务执行并显示错误页，同时通过 panic hook 将原始消息、源码位置、启动阶段和回溯追加到应用 `Documents/phira-crash.txt`。可在“文件”App 的 Phira 文件夹或文件共享中导出。后台线程的 panic 也会记录；原生异常、abort、图形框架在该 future 外的错误以及 panic 期间再次 panic 不能保证被捕获。仍需新包真机复现，以日志定位并修复原始错误。
+iOS 入口现在在 Rust future 内捕获 panic，在失败时停止业务执行并显示错误页，同时通过 panic hook 将原始消息、源码位置、启动阶段和回溯追加到应用 `Documents/phira-crash.txt`。可在“文件”App 的 Phira 文件夹或文件共享中导出。后台线程的 panic 也会记录；原生异常、abort、图形框架在该 future 外的错误以及 panic 期间再次 panic 不能保证被捕获。
+
+后续真机日志已定位原始错误：`TimeManager::resume` 在 `pause_time = None` 时执行 `unwrap()`。iOS 初次 `applicationDidBecomeActive` 可在未暂停过的情况下发送恢复通知，进入 `MainScene::resume` 后触发崩溃。修复包括：`Main` 忽略无状态变化的暂停/恢复通知，`TimeManager` 重复暂停保留首次暂停时间、未暂停时恢复无操作；主循环在更新前非阻塞处理生命周期消息，暂停期间返回帧循环，避免阻塞派发恢复通知的 iOS 主线程。新增 `cargo test --locked -p prpr --no-default-features --test time` 覆盖首次/重复恢复、重复暂停及暂停后重置。修复后的启动与前后台切换仍需真机确认。
 
 用户提供的 2026-10-03 Actions 日志已确认 Xcode `BUILD SUCCEEDED`，随后打包前的 `lipo` 检查因参数顺序错误退出；现已修正为输入文件在前、`-verify_arch arm64` 在后。修正后的 IPA 打包及上传仍需重新运行 Actions 验证。
